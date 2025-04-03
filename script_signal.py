@@ -4,6 +4,8 @@ from utils import *
 from scipy.signal import stft, istft
 from sklearn.decomposition import NMF
 
+
+
 # -------------------------- Spectrogram --------------------------------------
 
 def compute_spectrogram(audio, sample_rate, nperseg=1024):
@@ -33,7 +35,13 @@ def compute_spectrogram(audio, sample_rate, nperseg=1024):
       phase spectrogram (2D array).
     """
     
-    # A CODER
+    
+    f, t, Zxx = stft(audio, fs=sample_rate, nperseg=nperseg)
+
+    magnitude = np.abs(Zxx)
+    phase = np.angle(Zxx)
+
+    return f, t, magnitude, phase
 
 def reconstruct_audio(magnitude, phase, sample_rate, nperseg=1024):
 
@@ -58,7 +66,14 @@ def reconstruct_audio(magnitude, phase, sample_rate, nperseg=1024):
       reconstructed audio signal (1D array)
     """
     
-    # A CODER
+    # Reconstruct the complex STFT matrix
+    
+    Zxx = magnitude * np.exp(1j * phase)
+
+    # Compute the ISTFT
+    _, reconstructed_audio = istft(Zxx, fs=sample_rate, nperseg=nperseg)
+
+    return reconstructed_audio
 
 
 # ------------------------------- NMF ------------------------------------------
@@ -83,7 +98,13 @@ def separate_sources(magnitude, n_components=3):
       activation matrix of size (n_components, n_times).
     """
     
-    # A CODER
+    # Apply NMF to decompose the magnitude spectrogram
+    nmf = NMF(n_components=n_components, init="random", random_state=42, max_iter=500)
+    W = nmf.fit_transform(magnitude)  # Basis matrix
+    print(f"SHAPE OF W: {W.shape}")
+    H = nmf.components_  # Activation matrix
+
+    return W, H
     
     
 def reconstruct_sources(W, H):
@@ -105,16 +126,35 @@ def reconstruct_sources(W, H):
         List of reconstructed spectrograms for each component.
     """
     
-    # A CODER
-    
 
+    source_spectrograms = [W[:, i:i+1] @ H[i:i+1, :] for i in range(W.shape[1])]
+    return source_spectrograms
+    
+def reconstruct_sources_gain(W, H):
+    separated_sources = reconstruct_sources(W, H)
+    
+    source_energies = np.sum(H, axis=1)  # Sum over time
+    
+    results = []
+    sorted_idx = np.argsort(source_energies)
+    for k in range(1, source_energies.shape[0]):
+      print(np.array(separated_sources).shape)
+      print(sorted_idx.shape)
+      selected_sources = np.array(separated_sources)[sorted_idx[k:].ravel(), :, :]
+      synthesis_magn = np.sum(selected_sources, axis=0)
+      results.append(synthesis_magn)
+    
+    return results    
+
+    
+    
 # -------------- Signal-to-reconstruction error (SRE)--------------------------
 
 def SRE(signal, rec):
 
     """
     Signal-to-Reconstruction Error
-     
+    
     Parameters
     ----------
     
@@ -130,8 +170,26 @@ def SRE(signal, rec):
       signal-to-reconstruction error 
     """
     
-    # A CODER
- 
+    # Ensure input signals are numpy arrays
+    signal = np.asarray(signal)
+    rec = np.asarray(rec)
+    
+    min_length = min(signal.shape[0], rec.shape[0])
+    signal = signal[:min_length]
+    rec = rec[:min_length]
+
+    # Compute SRE
+    signal_power = np.sum(signal**2)
+    error_power = np.sum((signal - rec) ** 2)
+    
+    # Avoid division by zero (if error_power is zero, return a high SRE)
+    if error_power == 0:
+        return np.inf  # Perfect reconstruction
+
+    sre = 10 * np.log10(signal_power / error_power)
+
+    return sre
+
 # -------------------------------------------------------------------
 # Launch script
 # -------------------------------------------------------------------
@@ -143,7 +201,7 @@ if __name__ == '__main__':
     
     # Compute and display spectrogram
     freqs, t, magnitude, phase = compute_spectrogram(audio, sample_rate)
-    plot_spectrogram(freqs, t, magnitude, sample_rate)
+    # plot_spectrogram(freqs, t, magnitude, sample_rate)
     
     # NMF and reconstruction with 3 sources
     n_components = 3
@@ -166,9 +224,35 @@ if __name__ == '__main__':
     err = SRE(audio, synthesis)
     save_audio("./results/synthesis30.wav", synthesis, sample_rate) 
     print("SRE with " + str(n_components) + " : " + str(err))
+    print(H.shape)
     
-    # Extraction of the violin pist  
-    # A CODER
+
+
+    # Reconstruct the spectrogram for the dominant source
+    # NMF and reconstruction with 30 sources
+    n_components = 1000
+    W, H = separate_sources(magnitude, n_components=n_components)
+    
+    data = W.T
+    import umap
+
+    umap_model = umap.UMAP(n_components=2)  # Reduce to 2D for visualization
+    reduced_data = umap_model.fit_transform(data)
+
+    # Step 2: Plot the 2D UMAP projection
+    plt.scatter(reduced_data[:, 0], reduced_data[:, 1])
+    plt.title("UMAP 2D Visualization of Clusters")
+    plt.xlabel("UMAP 1")
+    plt.ylabel("UMAP 2")
+    plt.show()
+    source_energies = np.sum(H, axis=1)  # Sum over time
+    print(source_energies)
+    
+    sources = reconstruct_sources_gain(W, H)
+    # for i, source in enumerate(sources):
+    #   synthesis = reconstruct_audio(source, phase, sample_rate, nperseg=1024) 
+    #   save_audio(f"./results/result_{i}.wav", synthesis, sample_rate) 
+
 
         
     
