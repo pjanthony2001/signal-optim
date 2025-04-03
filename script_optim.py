@@ -67,12 +67,12 @@ def norm_ratio_H(H, H_p):
 def L_W(H):
     # This is by looking at the second derivative, if the function has no second
     # derivative, we have to just pick 4 * || H @ H.T ||
-    return 2 * f_norm_sq(H @ H.T) 
+    return 4 * f_norm_sq(H @ H.T) 
 
 def L_H(W):
     # This is by looking at the second derivative, if the function has no second
     # derivative, we have to just pick 4 * || W.T @ W ||
-    return 2 * f_norm_sq(W.T @ W) 
+    return 4  * f_norm_sq(W.T @ W) 
 
 def PALM(S, W0, H0, y_W, y_H, max_iter=1000, tol=1e-5):
     W, H = W0, H0
