@@ -15,14 +15,13 @@ from scipy.signal import stft
 def f_norm_sq(A: np.ndarray) -> float: # Given that the matrices are all real
     return np.sum(A * A)
     
-def grad_W_f(W: np.ndarray, H: np.ndarray) -> np.ndarray:
-    return (W @ H - S) @ H.T
+def grad_W_f(S, W: np.ndarray, H: np.ndarray) -> np.ndarray:
+    return 2 * (W @ H - S) @ H.T
     
-def grad_H_f(W: np.ndarray, H: np.ndarray) -> np.ndarray:
-    return W.T @ (W @ H - S) 
+def grad_H_f(S, W: np.ndarray, H: np.ndarray) -> np.ndarray:
+    return 2 * W.T @ (W @ H - S) 
 
 def alpha_W(grad_W, H) -> float:
-    
     return 0.25 * (f_norm_sq(grad_W) / f_norm_sq(grad_W @ H))
 
 def alpha_H(grad_H, W) -> float:
@@ -43,12 +42,12 @@ def nmf_APGD(S, W0, H0, max_iter=1000, tol=1e-6):
     print(f"m = {W.shape[0]}, k = {W.shape[1]}, n = {H.shape[1]}")
     
     i = 0
-    while f_norm_sq(grad_W_f(W, H)) > tol and f_norm_sq(grad_H_f(W, H)) > tol and i <= max_iter: 
+    while f_norm_sq(grad_W_f(S, W, H)) > tol and f_norm_sq(grad_H_f(S, W, H)) > tol and i <= max_iter: 
         # There is an error in the algorithm given in the pdf
         
         i = i + 1
-        grad_W = grad_W_f(W, H)
-        grad_H = grad_H_f(W, H)
+        grad_W = grad_W_f(S, W, H)
+        grad_H = grad_H_f(S, W, H)
         
         a_W = alpha_W(grad_W, H)
         W = P1(W - a_W * grad_W)
@@ -68,26 +67,36 @@ def L_W(H):
     return 4 * f_norm_sq(H @ H.T) 
 
 def L_H(W):
-    return 4  * f_norm_sq(W.T @ W) 
+    return 4  * f_norm_sq(W.T @ W)
 
-def PALM(S, W0, H0, y_W, y_H, max_iter=1000, tol=1e-5):
+def Prox_mu_W(X, mu, lambda_W):
+    return np.maximum(X - mu * lambda_W, 0)
+
+def Prox_mu_H(X, mu, lambda_H):
+    return np.maximum(X - mu * lambda_H, 0)
+
+def PALM(S, W0, H0, y_W, y_H, lambda_W, lambda_H, max_iter=10000, tol=1e-16):
     W, H = W0, H0
     print(f"m = {W.shape[0]}, k = {W.shape[1]}, n = {H.shape[1]}")
+
     
     i = 0
     W_p = (1 / (tol + 1)) * W0
     H_p = (1 / (tol + 1)) * H0
     
-    while norm_ratio_W(W, W_p) + norm_ratio_H(H, H_p) > tol and i < max_iter:
+    while norm_ratio_W(W, W_p) + norm_ratio_H(H, H_p) <= tol and i < max_iter:
         i = i + 1
         W_p = W
         c = y_W * L_W(H)
-
+        mu_W = 1 / c
+        W = Prox_mu_W(W - mu_W * grad_W_f(S, W, H), mu_W, lambda_W) 
         
         H_p = H
         d = y_H * L_H(W)
+        mu_H = 1 / d
+        H = Prox_mu_W(H - mu_H * grad_H_f(S, W, H), mu_H, lambda_H)
     
-    return W, H
+    return W, H, i
         
 
 # Examples:
@@ -124,7 +133,7 @@ if __name__ == "__main__":
     plt.axis('off')
         
     start_time = time.time()
-    W, H, nb_iter = nmf_APGD(S, W0, H0) # A CODER
+    W, H, nb_iter = nmf_APGD(S, W0, H0)
     print("Factorization with Alternating Projected Gradient complete.")
     print("Durée : ", time.time()-start_time)
     print("Norm of the error:", norm(S - np.matmul(W, H), 'fro'))
@@ -133,6 +142,15 @@ if __name__ == "__main__":
     ax[0, 1].imshow(np.matmul(W,H), cmap="hsv")
     ax[0, 1].set_title('Projected Gradient')
 
+    
+    lambda_W, lambda_H = 1e-3, 1e-3
+    y_W, y_H = 5e-3, 5e-3
+    start_time = time.time()
+    W, H, nb_iter = PALM(S, W0, H0, y_W, y_H, lambda_W, lambda_H)
+    print("Factorization with PALM complete.")
+    print("Durée : ", time.time()-start_time)
+    print("Norm of the error:", norm(S - np.matmul(W, H), 'fro'))
+    print("L1-norm of (W,H):", norm(W.ravel(),1)+norm(H.ravel(),1)) 
 
 
 
