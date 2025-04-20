@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 from utils import *
 from scipy.signal import stft, istft
 from sklearn.decomposition import NMF
+from numpy.linalg import norm
 
 
 
@@ -189,6 +190,21 @@ def SRE(signal, rec):
     sre = 10 * np.log10(signal_power / error_power)
 
     return sre
+  
+  
+# ----------------------------------
+# Clustering Evaluation Metrics
+# -----------------------------------
+
+def normalize_H_rows(W, H):
+  norm_rows_H = norm(H, ord=2, axis=1)
+  return H / norm_rows_H, norm_rows_H * W
+
+def entropy(H):
+  
+  pass
+
+# We should focus on how the NMF clusters based on H instead
 
 # -------------------------------------------------------------------
 # Launch script
