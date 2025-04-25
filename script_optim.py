@@ -83,7 +83,7 @@ def Prox_mu_W(X, mu, lambda_W):
 def Prox_mu_H(X, mu, lambda_H):
     return np.maximum(X - 0.5 * mu * lambda_H, 0)
 
-def PALM(S, W0, H0, y_W, y_H, lambda_W, lambda_H, max_iter=70000, tol=1e-12):
+def  PALM(S, W0, H0, y_W, y_H, lambda_W, lambda_H, max_iter=70000, tol=1e-12):
     W, H = W0, H0
     print(f"m = {W.shape[0]}, k = {W.shape[1]}, n = {H.shape[1]}")
 
@@ -113,7 +113,7 @@ def keep_strict_top_p(arr, p):
 
     top_p_indices = np.argpartition(flat, -p)[-p:]
     
-    # Create a new zero array
+
     result_flat = np.zeros_like(flat)
     result_flat[top_p_indices] = flat[top_p_indices]
 
@@ -169,7 +169,8 @@ def scipy_optimize(S, W0, H0):
         H = x[m*k:].reshape((k, n))
         return np.linalg.norm(S - W @ H, 'fro')
 
-    res = minimize(objective, x0, method='trust-constr', bounds=[(0, None)] * x_len, jac=jac, hess=lambda _ : np.zeros((x_len, x_len)))
+    # I took the Hessian as zero, when it was not zero, because the approximations made by the minimize function is about zero. Thus to make it faster, I took it as all zero.
+    res = minimize(objective, x0, method='trust-constr', bounds=[(0, None)] * x_len, jac=jac, hess=lambda _ : np.zeros((x_len, x_len))) 
     W = res.x[:m*k].reshape((m, k))
     H = res.x[m*k:].reshape((k, n))
 
@@ -283,3 +284,46 @@ if __name__ == "__main__":
     ax[1, 2].set_title('sklearn NMF')
     
     plt.show()
+    
+    # TESTING DIFFERENT VALUES OF p_W and p_H
+    
+    p_W, p_H = 100, 100
+    y_W, y_H = 1, 1
+    start_time = time.perf_counter()
+    W, H, nb_iter = PALM_1(S, W0, H0, y_W, y_H, p_W, p_H)
+    print("Factorization with PALM 1 complete.")
+    print("Durée : ", time.perf_counter() - start_time)
+    print("Norm of the error:", norm(S - np.matmul(W, H), 'fro'))
+    print("L1-norm of (W,H):", norm(W.ravel(),1)+norm(H.ravel(),1))
+    print(f"Number of Iterations {nb_iter}")
+    print()
+    ax[0, 3].imshow(np.matmul(W,H), cmap="hsv")
+    ax[0, 3].set_title('PALM 1')
+
+
+    p_W, p_H = int(0.25 * (m * k)) , int(0.25 * (k * n))
+    y_W, y_H = 1, 1
+    start_time = time.perf_counter()
+    W, H, nb_iter = PALM_1(S, W0, H0, y_W, y_H, p_W, p_H)
+    print("Factorization with PALM 1 complete.")
+    print("Durée : ", time.perf_counter() - start_time)
+    print("Norm of the error:", norm(S - np.matmul(W, H), 'fro'))
+    print("L1-norm of (W,H):", norm(W.ravel(),1)+norm(H.ravel(),1))
+    print(f"Number of Iterations {nb_iter}")
+    print()
+    ax[0, 3].imshow(np.matmul(W,H), cmap="hsv")
+    ax[0, 3].set_title('PALM 1')
+
+    p_W, p_H = m * k , k * n
+    y_W, y_H = 1, 1
+    start_time = time.perf_counter()
+    W, H, nb_iter = PALM_1(S, W0, H0, y_W, y_H, p_W, p_H)
+    print("Factorization with PALM 1 complete.")
+    print("Durée : ", time.perf_counter() - start_time)
+    print("Norm of the error:", norm(S - np.matmul(W, H), 'fro'))
+    print("L1-norm of (W,H):", norm(W.ravel(),1)+norm(H.ravel(),1))
+    print(f"Number of Iterations {nb_iter}")
+    print()
+    ax[0, 3].imshow(np.matmul(W,H), cmap="hsv")
+    ax[0, 3].set_title('PALM 1')
+

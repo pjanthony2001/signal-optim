@@ -104,9 +104,9 @@ def separate_sources(magnitude, n_components=3):
     """
     
     # Apply NMF to decompose the magnitude spectrogram
-    nmf = NMF(n_components=n_components, init="random", random_state=42, max_iter=500)
-    W = nmf.fit_transform(magnitude)  # Basis matrix
-    H = nmf.components_  # Activation matrix
+    nmf = NMF(n_components=n_components, init="random", random_state=42, max_iter=1000)
+    W = nmf.fit_transform(magnitude) 
+    H = nmf.components_ 
 
     return W, H
     
@@ -173,13 +173,11 @@ def SRE(signal, rec):
     signal = signal[:min_length]
     rec = rec[:min_length]
 
-    # Compute SRE
     signal_power = np.sum(signal**2)
     error_power = np.sum((signal - rec) ** 2)
     
-    # Avoid division by zero (if error_power is zero, return a high SRE)
-    if error_power == 0:
-        return np.inf  # Perfect reconstruction
+    if error_power == 0: # Avoid division by zero 
+        return np.inf  
 
     sre = 10 * np.log10(signal_power / error_power)
 
@@ -233,10 +231,10 @@ def analyze_W(W):
     })
 
     
-    return df[df.NumPeaks >= 2][df.SD > 20][df.MeanPeaks > 50] # Due to Harmonics, Violins should have multiple peaks
+    return df[df.NumPeaks >= 2][df.SD > 20][df.MeanPeaks > 50] # due to Harmonics, Violins should have multiple peaks
   
 def plot_top_W(W, top_indices):
-    plt.figure(figsize=(12, 6))  # Wider figure helps with a long legend
+    plt.figure(figsize=(12, 6))  
     for i, idx in enumerate(top_indices):
         plt.plot(W[:, idx], label=f'Component {idx}')
     plt.title('Top Candidate Components')
@@ -252,7 +250,7 @@ def plot_top_W(W, top_indices):
     plt.show()
 
 def plot_WH(W, H):
-    plt.figure(figsize=(12, 6))  # Wider figure helps with a long legend
+    plt.figure(figsize=(12, 6)) 
     for i, idx in enumerate(range(W.shape[1])):
         plt.plot(W[:, idx], label=f'Component {idx}')
     plt.title('Components of W')
@@ -267,7 +265,7 @@ def plot_WH(W, H):
     plt.tight_layout()
     plt.show()
     
-    plt.figure(figsize=(12, 6))  # Wider figure helps with a long legend
+    plt.figure(figsize=(12, 6))
     for i, idx in enumerate(range(W.shape[1])):
         plt.plot(H[idx, :], label=f'Component {idx}')
     plt.title('Components of H')
