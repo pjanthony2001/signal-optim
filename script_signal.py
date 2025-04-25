@@ -4,6 +4,10 @@ from utils import *
 from scipy.signal import stft, istft
 from sklearn.decomposition import NMF
 from numpy.linalg import norm
+import pandas as pd
+from scipy.stats import kurtosis, entropy
+from scipy.signal import find_peaks
+import matplotlib.pyplot as plt
 
 
 
@@ -102,7 +106,6 @@ def separate_sources(magnitude, n_components=3):
     # Apply NMF to decompose the magnitude spectrogram
     nmf = NMF(n_components=n_components, init="random", random_state=42, max_iter=500)
     W = nmf.fit_transform(magnitude)  # Basis matrix
-    print(f"SHAPE OF W: {W.shape}")
     H = nmf.components_  # Activation matrix
 
     return W, H
@@ -131,24 +134,15 @@ def reconstruct_sources(W, H):
     source_spectrograms = [W[:, i:i+1] @ H[i:i+1, :] for i in range(W.shape[1])]
     return source_spectrograms
     
-def reconstruct_sources_gain(W, H):
-    separated_sources = reconstruct_sources(W, H)
-    
-    source_energies = np.sum(H, axis=1)  # Sum over time
-    
-    results = []
-    sorted_idx = np.argsort(source_energies)
-    for k in range(1, source_energies.shape[0]):
-      print(np.array(separated_sources).shape)
-      print(sorted_idx.shape)
-      selected_sources = np.array(separated_sources)[sorted_idx[k:].ravel(), :, :]
-      synthesis_magn = np.sum(selected_sources, axis=0)
-      results.append(synthesis_magn)
-    
-    return results    
 
-    
-    
+def reconstruct_sources_idx(W, H, idx):
+    '''
+    Useful metric to reconstruct only the sources indicated by the index parameter.
+    '''
+    idx = list(idx)
+    source_spectrograms = [W[:, i:i+1] @ H[i:i+1, :] for i in idx]
+    return source_spectrograms
+
 # -------------- Signal-to-reconstruction error (SRE)--------------------------
 
 def SRE(signal, rec):
@@ -193,18 +187,102 @@ def SRE(signal, rec):
   
   
 # ----------------------------------
-# Clustering Evaluation Metrics
+# Additional functions
 # -----------------------------------
 
-def normalize_H_rows(W, H):
-  norm_rows_H = norm(H, ord=2, axis=1)
-  return H / norm_rows_H, norm_rows_H * W
+def harmonic_peak_stats(w_col):
+    peaks, _ = find_peaks(w_col, height=0.05)
+    print(peaks)
+    if len(peaks) < 2:
+        return 0, len(peaks), peaks[0], peaks[0], 0, 0
+    diffs = np.diff(peaks)
+    mean_spacing = np.mean(diffs)
+    max_ = np.max(peaks)
+    min_ = np.min(peaks)
+    sd = np.std(peaks)
+    mean = np.mean(peaks)
+    return (mean_spacing, len(peaks), min_, max_, mean, sd)
 
-def entropy(H):
+def analyze_W(W):
+    spacings = []
+    num_peaks = []
+    max_peaks = []
+    min_peaks = []
+    sd_peaks = []
+    mean_peaks = []
+
+
+    for k in range(W.shape[1]):
+        col = W[:, k]
+        spacing, n_peaks, min_, max_, mean, sd = harmonic_peak_stats(col)
+        spacings.append(spacing)
+        num_peaks.append(n_peaks)
+        max_peaks.append(max_)
+        min_peaks.append(min_)
+        sd_peaks.append(sd)
+        mean_peaks.append(mean)
+
+    df = pd.DataFrame({
+        'Component': np.arange(W.shape[1]),
+        'PeakSpacing': spacings,
+        'NumPeaks': num_peaks,
+        'MaxPeaks': max_peaks,
+        'MinPeaks': min_peaks,
+        'SD': sd_peaks,
+        'MeanPeaks': mean_peaks
+    })
+
+    
+    return df[df.NumPeaks >= 2][df.SD > 20][df.MeanPeaks > 50] # Due to Harmonics, Violins should have multiple peaks
   
-  pass
+def plot_top_W(W, top_indices):
+    plt.figure(figsize=(12, 6))  # Wider figure helps with a long legend
+    for i, idx in enumerate(top_indices):
+        plt.plot(W[:, idx], label=f'Component {idx}')
+    plt.title('Top Candidate Components')
+    plt.xlabel('Frequency Bin')
+    plt.ylabel('Magnitude')
+    plt.grid(True)
 
-# We should focus on how the NMF clusters based on H instead
+
+    plt.legend(loc='lower center', bbox_to_anchor=(0.5, -0.5), 
+               ncol=6, fontsize='medium', frameon=False)
+
+    plt.tight_layout()
+    plt.show()
+
+def plot_WH(W, H):
+    plt.figure(figsize=(12, 6))  # Wider figure helps with a long legend
+    for i, idx in enumerate(range(W.shape[1])):
+        plt.plot(W[:, idx], label=f'Component {idx}')
+    plt.title('Components of W')
+    plt.xlabel('Frequency Bin')
+    plt.ylabel('Magnitude')
+    plt.grid(True)
+
+
+    plt.legend(loc='lower center', bbox_to_anchor=(0.5, -0.5), 
+               ncol=6, fontsize='medium', frameon=False)
+
+    plt.tight_layout()
+    plt.show()
+    
+    plt.figure(figsize=(12, 6))  # Wider figure helps with a long legend
+    for i, idx in enumerate(range(W.shape[1])):
+        plt.plot(H[idx, :], label=f'Component {idx}')
+    plt.title('Components of H')
+    plt.xlabel('Time Bin')
+    plt.ylabel('Magnitude of Gain')
+    plt.grid(True)
+
+
+    plt.legend(loc='lower center', bbox_to_anchor=(0.5, -0.5), 
+               ncol=6, fontsize='medium', frameon=False)
+
+    plt.tight_layout()
+    plt.show()
+
+    
 
 # -------------------------------------------------------------------
 # Launch script
@@ -240,35 +318,23 @@ if __name__ == '__main__':
     err = SRE(audio, synthesis)
     save_audio("./results/synthesis30.wav", synthesis, sample_rate) 
     print("SRE with " + str(n_components) + " : " + str(err))
-    print(H.shape)
+    plot_WH(W, H)
     
+    df = analyze_W(W)
+    print(df)
+
+    # Plot top components by entropy
+    top_components = df['Component'].values
+    plot_top_W(W, top_components)
+    sources = reconstruct_sources_idx(W, H, top_components)
+    synthesis_magn = np.sum(sources, axis=0)
+    synthesis = reconstruct_audio(synthesis_magn, 
+      phase, sample_rate, nperseg=1024)
+    err = SRE(audio, synthesis)
+    save_audio("./results/synthesisViolin.wav", synthesis, sample_rate) 
+    print("SRE with " + str(n_components) + " : " + str(err))
+  
 
 
-    # Reconstruct the spectrogram for the dominant source
-    # NMF and reconstruction with 30 sources
-    n_components = 1000
-    W, H = separate_sources(magnitude, n_components=n_components)
-    
-    data = W.T
-    import umap
-
-    umap_model = umap.UMAP(n_components=2)  # Reduce to 2D for visualization
-    reduced_data = umap_model.fit_transform(data)
-
-    # Step 2: Plot the 2D UMAP projection
-    plt.scatter(reduced_data[:, 0], reduced_data[:, 1])
-    plt.title("UMAP 2D Visualization of Clusters")
-    plt.xlabel("UMAP 1")
-    plt.ylabel("UMAP 2")
-    plt.show()
-    source_energies = np.sum(H, axis=1)  # Sum over time
-    print(source_energies)
-    
-    sources = reconstruct_sources_gain(W, H)
-    # for i, source in enumerate(sources):
-    #   synthesis = reconstruct_audio(source, phase, sample_rate, nperseg=1024) 
-    #   save_audio(f"./results/result_{i}.wav", synthesis, sample_rate) 
 
 
-        
-    

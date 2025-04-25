@@ -5,6 +5,8 @@ from scipy.optimize import minimize, least_squares
 import casadi as ca
 import time
 import matplotlib.pyplot as plt 
+from scipy import linalg
+
 
 from skimage.data import shepp_logan_phantom
 from skimage.transform import resize
@@ -22,19 +24,24 @@ def grad_H_f(S, W: np.ndarray, H: np.ndarray) -> np.ndarray:
     return 2 * W.T @ (W @ H - S) 
 
 def alpha_W(grad_W, H) -> float:
-    return 0.5 * f_norm_sq(grad_W) / f_norm_sq(grad_W @ H)
+    if f_norm_sq(grad_W @ H):
+        return 0.5 * f_norm_sq(grad_W) / f_norm_sq(grad_W @ H)
+    return 0
+
 
 def alpha_H(grad_H, W) -> float:
-    return 0.5 * f_norm_sq(grad_H) / f_norm_sq(W @ grad_H)
+    if f_norm_sq(W @ grad_H):
+        return 0.5 * f_norm_sq(grad_H) / f_norm_sq(W @ grad_H)
+    return 0
 
-def P1(M, tol) -> np.ndarray:
+def P1(M) -> np.ndarray:
     # Projecting a matrix M on to the space of m by k real non-negative
-    return np.maximum(M, tol)
+    return np.maximum(M, 0)
     
 
-def P2(M, tol) -> np.ndarray:
+def P2(M) -> np.ndarray:
     # Projecting a matrix M on to the space of k by n real non-negative
-    return np.maximum(M, tol)
+    return np.maximum(M, 0)
 
 
 def nmf_APGD(S, W0, H0, max_iter=50000, tol=1e-8):
@@ -50,10 +57,10 @@ def nmf_APGD(S, W0, H0, max_iter=50000, tol=1e-8):
         
         a_W = alpha_W(grad_W, H)
         
-        W = P1(W - a_W * grad_W, epsilon)
+        W = P1(W - a_W * grad_W)
         
         a_H = alpha_H(grad_H, W)
-        H = P2(H - a_H * grad_H, epsilon)
+        H = P2(H - a_H * grad_H)
         
     return W, H, i
 
@@ -64,24 +71,25 @@ def norm_ratio_H(H, H_p):
     return np.sqrt(f_norm_sq(H - H_p) / f_norm_sq(H_p))
 
 def L_W(H):
-    return 4 * f_norm_sq(H @ H.T) 
+    x = np.max(linalg.eigvalsh(H @ H.T))
+    return 2 * x
 
 def L_H(W):
-    return 4  * f_norm_sq(W.T @ W)
+    return 2 * np.max(linalg.eigvalsh(W.T @ W))
 
 def Prox_mu_W(X, mu, lambda_W):
-    return np.maximum(X - mu * lambda_W, 0)
+    return np.maximum(X - 0.5 * mu  * lambda_W, 0)
 
 def Prox_mu_H(X, mu, lambda_H):
-    return np.maximum(X - mu * lambda_H, 0)
+    return np.maximum(X - 0.5 * mu * lambda_H, 0)
 
-def PALM(S, W0, H0, y_W, y_H, lambda_W, lambda_H, max_iter=70000, tol=1e-8):
+def PALM(S, W0, H0, y_W, y_H, lambda_W, lambda_H, max_iter=70000, tol=1e-12):
     W, H = W0, H0
     print(f"m = {W.shape[0]}, k = {W.shape[1]}, n = {H.shape[1]}")
 
     i = 0
-    W_p = 0.5 * W0
-    H_p = 0.5 * H0
+    W_p = W0 / (1 + tol)
+    H_p = H0 / (1 + tol)
     
     while norm_ratio_W(W, W_p) + norm_ratio_H(H, H_p) >= tol and i < max_iter:
         i = i + 1
@@ -124,8 +132,8 @@ def PALM_1(S, W0, H0, y_W, y_H, p_W, p_H, max_iter=50000, tol=1e-8):
     print(f"m = {W.shape[0]}, k = {W.shape[1]}, n = {H.shape[1]}")
 
     i = 0
-    W_p = 0.5 * W0
-    H_p = 0.5 * H0
+    W_p = W0 / (1 + tol)
+    H_p = H0 / (1 + tol)
     
     while norm_ratio_W(W, W_p) + norm_ratio_H(H, H_p) >= tol and i < max_iter:
         i = i + 1
